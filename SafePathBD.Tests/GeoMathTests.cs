@@ -59,4 +59,25 @@ public class GeoMathTests
     }
 
     [Fact]
+    public void BoundingBox_ContainsEveryPointInsideTheRadius()
+    {
+        const double radiusKm = 10;
+        var box = GeoMath.BoundingBox(ShahbagLat, ShahbagLng, radiusKm);
 
+        // A point due north, just inside the radius, must fall inside the box.
+        var northLat = ShahbagLat + (radiusKm - 0.5) / 111.32;
+        Assert.InRange(northLat, box.MinLat, box.MaxLat);
+
+        Assert.InRange(ShahbagLng, box.MinLon, box.MaxLon);
+        Assert.True(box.MinLat < ShahbagLat && box.MaxLat > ShahbagLat);
+    }
+
+    [Fact]
+    public void BoundingBox_StaysWithinValidCoordinateRanges()
+    {
+        var box = GeoMath.BoundingBox(89.9, 179.9, 500);
+
+        Assert.True(box.MinLat >= -90 && box.MaxLat <= 90);
+        Assert.True(box.MinLon >= -180 && box.MaxLon <= 180);
+    }
+}
