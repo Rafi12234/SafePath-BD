@@ -3,22 +3,7 @@ namespace SafePathBD.Web.Common;
 /// <summary>
 /// Values that must match the <c>report_votes.vote_type</c> enum exactly.
 /// </summary>
-public static class ReportVoteTypes
-{
-    public const string Confirm = "CONFIRM";
-    public const string Dispute = "DISPUTE";
 
-    public static readonly IReadOnlyList<string> All = new[] { Confirm, Dispute };
-
-    public static bool IsValid(string? value) => value is not null && All.Contains(value);
-
-    /// <summary>Normalises client input; returns null when the value is not a supported vote.</summary>
-    public static string? Normalize(string? value)
-    {
-        var upper = value?.Trim().ToUpperInvariant();
-        return IsValid(upper) ? upper : null;
-    }
-}
 
 /// <summary>
 /// <c>admin_actions.action_type</c> values written by the moderation module.
