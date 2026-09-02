@@ -5,6 +5,7 @@ namespace SafePathBD.Web.Common;
 /// </summary>
 public static class GeoMath
 {
+   
     private const double EarthRadiusKm = 6371.0088;
 
     public static bool IsValidLatitude(double latitude) =>
