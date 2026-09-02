@@ -1,3 +1,147 @@
 @model SafePathBD.Web.Areas.Admin.Controllers.AdminOverviewViewModel
 @{
+    ViewData["Title"] = "Admin";
 
+    var counts = Model.Counts;
+
+    var modules = new (string Name, string Description, bool Available)[]
+    {
+        ("Report verification", "Review pending accident and hazard reports.", true),
+        ("Users & roles", "Grant moderator or administrator access.", false),
+        ("Roads & segments", "Maintain the road network used for scoring.", false),
+        ("Emergency services", "Manage facilities shown on the map.", false),
+        ("Safety settings", "Tune the safety-score factor weights.", false),
+        ("Audit log", "Review recorded administrative actions.", false)
+    };
+
+    string ActionLabel(string type) => type switch
+    {
+        AdminActionTypes.ReportVerified => "Verified a report",
+        AdminActionTypes.ReportRejected => "Rejected a report",
+        AdminActionTypes.ReportMarkedDuplicate => "Marked a report duplicate",
+        AdminActionTypes.ReportNeedsInfo => "Requested more information",
+        AdminActionTypes.ReportResolved => "Resolved a report",
+        AdminActionTypes.ReportUnderReview => "Started a review",
+        AdminActionTypes.AccidentPromoted => "Promoted a trusted accident",
+        _ => "Changed a report status"
+    };
+}
+
+<partial name="_PageHeader" model="@(new PageHeaderViewModel
+{
+    Eyebrow = "Administration",
+    Title = "Admin area",
+    Description = "Signed in as " + (ViewData["AdminName"] as string ?? "administrator") + ". Management modules are added phase by phase.",
+    Chips = new[] { new PageHeaderChip("Administrator", "chip--accent") }
+})" />
+
+<section class="section section--tight">
+    <div class="shell admin-grid">
+        <nav class="side-nav" aria-label="Admin sections">
+            <a class="side-nav-item is-active" asp-area="Admin" asp-controller="Dashboard" asp-action="Index">
+                Overview
+            </a>
+            <a class="side-nav-item" asp-area="Admin" asp-controller="ReportModeration" asp-action="Index">
+                Report verification
+                @if (counts.OpenTotal > 0)
+                {
+                    <span class="chip chip--accent chip--plain">@counts.OpenTotal</span>
+                }
+            </a>
+            @foreach (var module in modules.Where(m => !m.Available))
+            {
+                <span class="side-nav-item is-soon">
+                    @module.Name
+                    <span class="chip chip--muted chip--plain">Soon</span>
+                </span>
+            }
+        </nav>
+
+        <div class="stack-5">
+            <div class="panel">
+                <div class="stack-2" style="margin-bottom: var(--space-5);">
+                    <h2 class="t-h3">Report queue</h2>
+                    <p class="t-meta">Live counts read from the reports table.</p>
+                </div>
+
+                <div class="tile-grid">
+                    <a class="module-tile" asp-area="Admin" asp-controller="ReportModeration" asp-action="Index" asp-route-status="@ReportStatusCodes.Pending">
+                        <span class="t-h2">@counts.Pending</span>
+                        <h3 class="t-h3">Pending</h3>
+                        <p class="t-meta">Waiting for a first decision.</p>
+                    </a>
+                    <a class="module-tile" asp-area="Admin" asp-controller="ReportModeration" asp-action="Index" asp-route-status="@ReportStatusCodes.UnderReview">
+                        <span class="t-h2">@counts.UnderReview</span>
+                        <h3 class="t-h3">Under review</h3>
+                        <p class="t-meta">Currently being looked at.</p>
+                    </a>
+                    <a class="module-tile" asp-area="Admin" asp-controller="ReportModeration" asp-action="Index" asp-route-status="@ReportStatusCodes.NeedsInfo">
+                        <span class="t-h2">@counts.NeedsInfo</span>
+                        <h3 class="t-h3">Needs info</h3>
+                        <p class="t-meta">Awaiting a reply from the reporter.</p>
+                    </a>
+                    <a class="module-tile" asp-area="Admin" asp-controller="ReportModeration" asp-action="Index" asp-route-status="@ReportStatusCodes.Verified">
+                        <span class="t-h2">@counts.Verified</span>
+                        <h3 class="t-h3">Verified</h3>
+                        <p class="t-meta">Eligible for the public map.</p>
+                    </a>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="stack-2" style="margin-bottom: var(--space-5);">
+                    <h2 class="t-h3">Recent moderation activity</h2>
+                    <p class="t-meta">Read from the admin action audit log.</p>
+                </div>
+
+                @if (Model.RecentActions.Count == 0)
+                {
+                    <p class="t-meta">No privileged action has been recorded yet.</p>
+                }
+                else
+                {
+                    <div class="timeline">
+                        @foreach (var entry in Model.RecentActions)
+                        {
+                            <div class="timeline-item">
+                                <span class="timeline-dot" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+                                </span>
+                                <div>
+                                    <strong class="t-body">@ActionLabel(entry.ActionType)</strong>
+                                    <p class="t-meta">
+                                        @(entry.ActorName ?? "Removed account") · @entry.ActionAt.ToString("d MMM yyyy, HH:mm")
+                                    </p>
+                                    @if (!string.IsNullOrWhiteSpace(entry.Description))
+                                    {
+                                        <p class="t-micro t-muted">@entry.Description</p>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+
+            <div class="panel">
+                <div class="stack-2" style="margin-bottom: var(--space-5);">
+                    <h2 class="t-h3">Management modules</h2>
+                    <p class="t-meta">Modules that are not built yet are marked as planned rather than faked.</p>
+                </div>
+
+                <div class="tile-grid">
+                    @foreach (var module in modules)
+                    {
+                        <div class="module-tile">
+                            <h3 class="t-h3">@module.Name</h3>
+                            <p class="t-meta">@module.Description</p>
+                            <span class="chip @(module.Available ? "chip--safe" : "chip--muted")">
+                                @(module.Available ? "Available" : "Planned")
+                            </span>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
