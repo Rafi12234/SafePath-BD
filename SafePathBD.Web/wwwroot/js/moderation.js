@@ -2,7 +2,26 @@
 (function () {
     "use strict";
 
+    function initMap() {
+        const host = document.querySelector("[data-review-map]");
+        if (!host || typeof L === "undefined" || !window.SafePathMap) {
+            return;
+        }
 
+        const lat = parseFloat(host.getAttribute("data-lat"));
+        const lng = parseFloat(host.getAttribute("data-lng"));
+        if (!isFinite(lat) || !isFinite(lng)) {
+            return;
+        }
+
+        const map = window.SafePathMap.createMap(host, { lat: lat, lng: lng, zoom: 16 });
+        map.scrollWheelZoom.disable();
+
+        L.marker([lat, lng], {
+            icon: window.SafePathMap.reportIcon(host.getAttribute("data-type"), host.getAttribute("data-accent")),
+            keyboard: false
+        }).addTo(map);
+    }
 
     function initDecisions() {
         const modal = document.querySelector("[data-decision-modal]");
