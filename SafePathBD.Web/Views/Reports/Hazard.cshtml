@@ -1,2 +1,212 @@
 @model SafePathBD.Web.Models.ViewModels.Reports.CreateHazardReportViewModel
 @using System.Text.Json
+@{
+    ViewData["Title"] = "Report a hazard";
+
+    var pickerConfig = JsonSerializer.Serialize(new
+    {
+        lat = 23.8103,
+        lng = 90.4125,
+        zoom = 12,
+        maxImages = Model.MaxImages,
+        maxImageMb = Model.MaxImageMegabytes,
+        allowedTypes = new[] { "image/jpeg", "image/png", "image/webp" }
+    });
+
+    var riskLevels = new (string Value, string Label, string Hint, string Color)[]
+    {
+        (HazardRiskLevels.Low, "Low", "Minor inconvenience for road users.", "var(--safe)"),
+        (HazardRiskLevels.Moderate, "Moderate", "A noticeable safety concern.", "var(--caution)"),
+        (HazardRiskLevels.High, "High", "Significant danger to road users.", "var(--warning)"),
+        (HazardRiskLevels.Critical, "Critical", "Immediate serious danger.", "var(--danger)")
+    };
+}
+
+@section Head {
+    <link rel="stylesheet" href="~/lib/leaflet/leaflet.css" />
+    <link rel="stylesheet" href="~/css/map.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/reports.css" asp-append-version="true" />
+}
+
+<partial name="_PageHeader" model="@(new PageHeaderViewModel
+{
+    Eyebrow = "Community reporting",
+    Title = "Report a road hazard",
+    Description = "Potholes, waterlogging, broken signals and blockages. Reports are reviewed before they influence any safety score."
+})" />
+
+<section class="section section--tight">
+    <div class="shell">
+        <form method="post" enctype="multipart/form-data" asp-action="Hazard" novalidate
+              data-report-form="@pickerConfig">
+            @Html.AntiForgeryToken()
+
+            <div class="report-layout">
+                @* ---------------------------------------------------------- map *@
+                <div class="report-map-side" data-step-section="location">
+                    <div class="picker">
+                        <div class="picker-canvas" data-picker-canvas role="application" aria-label="Choose the hazard location"></div>
+
+                        <div class="picker-search">
+                            <label class="visually-hidden" for="pickerSearch">Search for a place</label>
+                            <input class="input" id="pickerSearch" type="text" placeholder="Search for a place"
+                                   autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list"
+                                   data-picker-search />
+                            <div class="suggest" data-picker-suggest role="listbox" aria-label="Place suggestions"></div>
+                        </div>
+
+                        <button class="map-control picker-locate" type="button" data-picker-locate
+                                title="Use my location" aria-label="Use my location">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <circle cx="12" cy="12" r="3.2" /><circle cx="12" cy="12" r="8" /><path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3" />
+                            </svg>
+                        </button>
+                    </div>
+
+                    <div class="location-card" data-location-card>
+                        <span class="t-eyebrow">Hazard location</span>
+                        <p class="t-body" data-location-summary style="margin-top: var(--space-2);">
+                            Tap the map, search for a place, or use your location.
+                        </p>
+                        <p class="location-card-coords" data-location-coords></p>
+                        <span class="field-error" data-location-error asp-validation-for="Location.Latitude"></span>
+                    </div>
+
+                    <input type="hidden" asp-for="Location.Latitude" data-field-lat />
+                    <input type="hidden" asp-for="Location.Longitude" data-field-lng />
+                    <input type="hidden" asp-for="Location.AddressLine" data-field-address />
+                    <input type="hidden" asp-for="Location.LandmarkName" data-field-landmark />
+                    <input type="hidden" asp-for="Location.AreaName" data-field-area />
+                    <input type="hidden" asp-for="Location.City" data-field-city />
+                    <input type="hidden" asp-for="Location.District" data-field-district />
+                    <input type="hidden" asp-for="Location.Provider" data-field-provider />
+                    <input type="hidden" asp-for="Location.ExternalPlaceId" data-field-external-place-id />
+                </div>
+
+                @* --------------------------------------------------------- form *@
+                <div>
+                    <nav class="stepper" aria-label="Report sections">
+                        <button class="step-link is-active" type="button" data-step-link="location"><span>01</span> Location</button>
+                        <button class="step-link" type="button" data-step-link="details"><span>02</span> Hazard</button>
+                        <button class="step-link" type="button" data-step-link="risk"><span>03</span> Risk</button>
+                        <button class="step-link" type="button" data-step-link="evidence"><span>04</span> Evidence</button>
+                    </nav>
+
+                    <div asp-validation-summary="ModelOnly" class="alert alert--error" role="alert"></div>
+
+                    <section class="form-section" data-step-section="details">
+                        <div class="form-section-head">
+                            <span class="form-section-index">02</span>
+                            <h2 class="t-h3">What is the hazard</h2>
+                        </div>
+
+                        <div class="stack-4">
+                            <div class="field">
+                                <label class="field-label" asp-for="Title">Title</label>
+                                <input class="input" asp-for="Title" placeholder="e.g. Deep pothole in the left lane near Kalabagan" />
+                                <span class="field-error" asp-validation-for="Title"></span>
+                            </div>
+
+                            <div class="field-grid">
+                                <div class="field">
+                                    <label class="field-label" asp-for="HazardTypeId">Hazard type</label>
+                                    <select class="input" asp-for="HazardTypeId">
+                                        <option value="">Choose a type…</option>
+                                        @foreach (var type in Model.HazardTypes)
+                                        {
+                                            <option value="@type.Id">@type.Name</option>
+                                        }
+                                    </select>
+                                    <span class="field-error" asp-validation-for="HazardTypeId"></span>
+                                </div>
+
+                                <div class="field">
+                                    <label class="field-label" asp-for="ObservedAt">When you saw it</label>
+                                    <input class="input" asp-for="ObservedAt" type="datetime-local" />
+                                    <span class="field-error" asp-validation-for="ObservedAt"></span>
+                                </div>
+                            </div>
+
+                            <div class="field">
+                                <label class="field-label" asp-for="Description">Description</label>
+                                <textarea class="input" asp-for="Description" rows="4"
+                                          placeholder="Describe the hazard, which lane it affects, and anything that makes it harder to see."></textarea>
+                                <span class="field-error" asp-validation-for="Description"></span>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="form-section" data-step-section="risk">
+                        <div class="form-section-head">
+                            <span class="form-section-index">03</span>
+                            <h2 class="t-h3">Risk level</h2>
+                        </div>
+
+                        <div class="stack-5">
+                            <div class="field">
+                                <span class="field-label">How dangerous is it right now?</span>
+                                <div class="choice-grid" role="radiogroup" aria-label="Risk level">
+                                    @foreach (var risk in riskLevels)
+                                    {
+                                        <label class="choice" style="--choice-color: @risk.Color">
+                                            <input type="radio" asp-for="RiskLevel" id="risk_@risk.Value" value="@risk.Value" />
+                                            <span class="choice-body">
+                                                <span class="choice-label">@risk.Label</span>
+                                                <span class="choice-hint">@risk.Hint</span>
+                                            </span>
+                                        </label>
+                                    }
+                                </div>
+                                <span class="field-error" asp-validation-for="RiskLevel"></span>
+                            </div>
+
+                            <div class="field">
+                                <label class="field-label" asp-for="ExpectedClearanceAt">Expected to be cleared</label>
+                                <input class="input" asp-for="ExpectedClearanceAt" type="datetime-local" />
+                                <span class="field-hint">Optional. Useful for temporary hazards such as roadworks.</span>
+                                <span class="field-error" asp-validation-for="ExpectedClearanceAt"></span>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="form-section" data-step-section="evidence">
+                        <div class="form-section-head">
+                            <span class="form-section-index">04</span>
+                            <h2 class="t-h3">Supporting photos</h2>
+                        </div>
+
+                        <div class="dropzone" data-dropzone tabindex="0" role="button"
+                             aria-label="Add photos: click or drop files here">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M12 15V4m0 0L8 8m4-4 4 4" /><path d="M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15" />
+                            </svg>
+                            <strong class="t-body">Click or drop photos here</strong>
+                            <span class="t-meta">Up to @Model.MaxImages images · JPG, PNG or WebP · max @Model.MaxImageMegabytes MB each</span>
+                        </div>
+
+                        <input class="visually-hidden" type="file" asp-for="Images" multiple
+                               accept="image/jpeg,image/png,image/webp" data-file-input />
+
+                        <span class="field-error" asp-validation-for="Images"></span>
+
+                        <div class="previews" data-previews aria-live="polite"></div>
+                    </section>
+
+                    <div class="submit-bar">
+                        <p class="t-meta" style="margin: 0;">
+                            Your report will be saved with the status <strong>Pending</strong> until a moderator reviews it.
+                        </p>
+                        <button class="btn btn-primary btn-lg" type="submit" data-submit>Submit report</button>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+</section>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script src="~/lib/leaflet/leaflet.js"></script>
+    <script src="~/js/safepath-map.js" asp-append-version="true"></script>
+    <script src="~/js/report-form.js" asp-append-version="true"></script>
+}

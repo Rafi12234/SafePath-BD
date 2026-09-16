@@ -1,1 +1,113 @@
 @model SafePathBD.Web.Models.ViewModels.Reports.MyReportsViewModel
+@{
+    ViewData["Title"] = "My reports";
+    var reports = Model.Reports;
+
+    bool TypeActive(string? value) => Model.ReportType == value;
+    bool StatusActive(string? value) => Model.StatusCode == value;
+}
+
+@section Head {
+    <link rel="stylesheet" href="~/css/reports.css" asp-append-version="true" />
+}
+
+<partial name="_PageHeader" model="@(new PageHeaderViewModel
+{
+    Eyebrow = "Your contributions",
+    Title = "My reports",
+    Description = "Everything you have submitted, with its current review status."
+})" />
+
+<section class="section section--tight">
+    <div class="shell">
+        <div class="stat-strip">
+            <div class="stat">
+                <span class="stat-value">@Model.Stats.Total</span>
+                <span class="stat-label">Total submitted</span>
+            </div>
+            <div class="stat">
+                <span class="stat-value">@Model.Stats.Pending</span>
+                <span class="stat-label">Awaiting review</span>
+            </div>
+            <div class="stat">
+                <span class="stat-value">@Model.Stats.Verified</span>
+                <span class="stat-label">Verified</span>
+            </div>
+            <div class="stat">
+                <span class="stat-value">@Model.Stats.Resolved</span>
+                <span class="stat-label">Resolved</span>
+            </div>
+        </div>
+
+        <nav class="filter-bar" aria-label="Filter by report type">
+            <a class="filter-link @(TypeActive(null) ? "is-active" : null)"
+               asp-action="My" asp-route-status="@Model.StatusCode">All types</a>
+            <a class="filter-link @(TypeActive(ReportTypes.Accident) ? "is-active" : null)"
+               asp-action="My" asp-route-type="@ReportTypes.Accident" asp-route-status="@Model.StatusCode">Accidents</a>
+            <a class="filter-link @(TypeActive(ReportTypes.Hazard) ? "is-active" : null)"
+               asp-action="My" asp-route-type="@ReportTypes.Hazard" asp-route-status="@Model.StatusCode">Hazards</a>
+        </nav>
+
+        <nav class="filter-bar" aria-label="Filter by status">
+            <a class="filter-link @(StatusActive(null) ? "is-active" : null)"
+               asp-action="My" asp-route-type="@Model.ReportType">Any status</a>
+            @foreach (var status in Model.StatusOptions)
+            {
+                <a class="filter-link @(StatusActive(status.Value) ? "is-active" : null)"
+                   asp-action="My" asp-route-type="@Model.ReportType" asp-route-status="@status.Value">@status.Text</a>
+            }
+        </nav>
+
+        @if (reports.Items.Count == 0)
+        {
+            <div class="empty-state">
+                <span class="card-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M5 4.5h14v15l-7-3.4-7 3.4Z" />
+                    </svg>
+                </span>
+                <h3 class="t-h3">@(Model.ReportType is null && Model.StatusCode is null ? "No reports yet" : "Nothing matches these filters")</h3>
+                <p class="t-body">
+                    @if (Model.ReportType is null && Model.StatusCode is null)
+                    {
+                        <text>When you report an accident or a road hazard it will appear here with its review status.</text>
+                    }
+                    else
+                    {
+                        <text>Try a different type or status, or clear the filters.</text>
+                    }
+                </p>
+                <div class="cluster">
+                    <a class="btn btn-primary" asp-action="Accident">Report an accident</a>
+                    <a class="btn btn-secondary" asp-action="Hazard">Report a hazard</a>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="report-list">
+                @foreach (var report in reports.Items)
+                {
+                    <partial name="_ReportCard" model="report" />
+                }
+            </div>
+
+            @if (reports.TotalPages > 1)
+            {
+                <nav class="pager" aria-label="Report pages">
+                    @if (reports.HasPrevious)
+                    {
+                        <a class="btn btn-secondary" asp-action="My" asp-route-type="@Model.ReportType"
+                           asp-route-status="@Model.StatusCode" asp-route-page="@(reports.Page - 1)">Previous</a>
+                    }
+                    <span class="t-meta">Page @reports.Page of @reports.TotalPages · @reports.TotalCount reports</span>
+                    @if (reports.HasNext)
+                    {
+                        <a class="btn btn-secondary" asp-action="My" asp-route-type="@Model.ReportType"
+                           asp-route-status="@Model.StatusCode" asp-route-page="@(reports.Page + 1)">Next</a>
+                    }
+                </nav>
+            }
+        }
+    </div>
+</section>

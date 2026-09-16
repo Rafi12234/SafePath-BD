@@ -1,1 +1,46 @@
 @model SafePathBD.Web.Models.DTOs.Reports.ReportDetailsDto
+@{
+    ViewData["Title"] = "Report submitted";
+    var isAccident = Model.ReportType == ReportTypes.Accident;
+}
+
+@section Head {
+    <link rel="stylesheet" href="~/css/reports.css" asp-append-version="true" />
+}
+
+<section class="section">
+    <div class="shell" style="max-width: 46rem;">
+        <div class="panel" style="text-align: center;">
+            <div class="stack-5" style="justify-items: center;">
+                <span class="success-glyph" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M20 6 9 17l-5-5" />
+                    </svg>
+                </span>
+
+                <div class="stack-3" role="status">
+                    <h1 class="t-h2">Report submitted</h1>
+                    <p class="t-lead" style="margin-inline: auto;">
+                        Thank you. Your @(isAccident ? "accident" : "hazard") report has been added to the review queue.
+                    </p>
+                </div>
+
+                <div class="cluster" style="justify-content: center;">
+                    <partial name="_ReportStatusChip" model="@((Model.StatusCode, Model.StatusName))" />
+                    <span class="chip chip--plain chip--muted">@Model.Title</span>
+                </div>
+
+                <p class="t-meta" style="max-width: 46ch;">
+                    A moderator will review it before it appears on the public map or influences any
+                    road safety score. You can follow its progress from My reports.
+                </p>
+
+                <div class="cluster" style="justify-content: center;">
+                    <a class="btn btn-primary" asp-action="Details" asp-route-id="@Model.ReportId">View report</a>
+                    <a class="btn btn-secondary" asp-action="My">My reports</a>
+                    <a class="btn btn-ghost" asp-controller="Map" asp-action="Index">Back to map</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>

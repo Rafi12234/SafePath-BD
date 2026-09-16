@@ -1,3 +1,373 @@
 @model SafePathBD.Web.Models.ViewModels.Reports.ReportDetailsViewModel
 @using System.Globalization
 @using System.Text.Json
+@{
+    var report = Model.Report;
+    ViewData["Title"] = report.Title;
+
+    var isAccident = report.ReportType == ReportTypes.Accident;
+
+    var accent = isAccident
+        ? report.SeverityName switch
+        {
+            "Minor" => "var(--caution)",
+            "Moderate" => "var(--warning)",
+            "Severe" => "var(--danger)",
+            "Fatal" => "var(--report-fatal)",
+            _ => "var(--warning)"
+        }
+        : report.RiskLevel switch
+        {
+            "LOW" => "var(--safe)",
+            "MODERATE" => "var(--caution)",
+            "HIGH" => "var(--warning)",
+            "CRITICAL" => "var(--danger)",
+            _ => "var(--caution)"
+        };
+
+    var mapConfig = JsonSerializer.Serialize(new
+    {
+        lat = report.Latitude,
+        lng = report.Longitude,
+        type = report.ReportType,
+        accent
+    });
+
+    // The geocoded address line often already contains the area or city, so avoid repeating them.
+    var placeParts = new List<string>();
+    foreach (var part in new[] { report.AddressLine, report.AreaName, report.City, report.District })
+    {
+        if (string.IsNullOrWhiteSpace(part))
+        {
+            continue;
+        }
+
+        if (!placeParts.Any(existing => existing.Contains(part, StringComparison.OrdinalIgnoreCase)))
+        {
+            placeParts.Add(part);
+        }
+    }
+
+    var place = string.Join(", ", placeParts);
+}
+
+@section Head {
+    <link rel="stylesheet" href="~/lib/leaflet/leaflet.css" />
+    <link rel="stylesheet" href="~/css/map.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/reports.css" asp-append-version="true" />
+}
+
+<partial name="_PageHeader" model="@(new PageHeaderViewModel
+{
+    Eyebrow = isAccident ? "Accident report" : "Hazard report",
+    Title = report.Title,
+    Description = string.IsNullOrWhiteSpace(place) ? null : place
+})" />
+
+<section class="section section--tight">
+    <div class="shell">
+        @Html.AntiForgeryToken()
+        <div class="cluster" style="margin-bottom: var(--space-5);">
+            <partial name="_ReportStatusChip" model="@((report.StatusCode, report.StatusName))" />
+            @if (isAccident && !string.IsNullOrWhiteSpace(report.SeverityName))
+            {
+                <span class="chip" style="color: @accent; background: color-mix(in srgb, @accent 13%, transparent); border-color: color-mix(in srgb, @accent 32%, transparent)">@report.SeverityName</span>
+            }
+            else if (!isAccident && !string.IsNullOrWhiteSpace(report.RiskLevel))
+            {
+                <span class="chip" style="color: @accent; background: color-mix(in srgb, @accent 13%, transparent); border-color: color-mix(in srgb, @accent 32%, transparent)">@report.RiskLevel risk</span>
+            }
+            @if (report.IsOwnedByViewer)
+            {
+                <span class="chip chip--plain chip--muted">Your report</span>
+            }
+            @if (!report.IsPublic)
+            {
+                <span class="chip chip--plain chip--muted">Not public</span>
+            }
+        </div>
+
+        @if (ReportVisibility.IsAwaitingVerification(report.StatusCode))
+        {
+            <div class="notice notice--caution" style="margin-bottom: var(--space-5);">
+                <span class="notice-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 9v4M12 17h.01" />
+                        <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+                    </svg>
+                </span>
+                <div>
+                    <strong class="t-body">Pending verification</strong>
+                    <p class="t-meta">
+                        Community-submitted information. A SafePath moderator has not verified this
+                        report, so it does not appear on the public map and should not be treated as
+                        confirmed road safety information.
+                    </p>
+                </div>
+            </div>
+        }
+
+        <div class="detail-grid">
+            <div class="stack-5">
+                <div class="panel">
+                    <h2 class="t-h3 card-title">Details</h2>
+
+                    @if (!string.IsNullOrWhiteSpace(report.Description))
+                    {
+                        <p class="t-body" style="white-space: pre-line;">@report.Description</p>
+                    }
+                    else
+                    {
+                        <p class="t-meta">No description was provided.</p>
+                    }
+
+                    <dl class="detail-list" style="margin-top: var(--space-5);">
+                        @if (isAccident)
+                        {
+                            <div class="detail-row"><dt>Accident type</dt><dd>@(report.AccidentTypeName ?? "—")</dd></div>
+                            <div class="detail-row"><dt>Occurred at</dt><dd>@(report.AccidentOccurredAt?.ToString("d MMM yyyy, HH:mm") ?? "Not recorded")</dd></div>
+                            <div class="detail-row"><dt>Vehicles involved</dt><dd>@(report.NumberOfVehicles?.ToString(CultureInfo.InvariantCulture) ?? "Unknown")</dd></div>
+                            <div class="detail-row"><dt>People injured</dt><dd>@(report.NumberOfInjured?.ToString(CultureInfo.InvariantCulture) ?? "0")</dd></div>
+                            <div class="detail-row"><dt>Lives lost</dt><dd>@(report.NumberOfDeaths?.ToString(CultureInfo.InvariantCulture) ?? "0")</dd></div>
+                            @if (!string.IsNullOrWhiteSpace(report.WeatherNotes))
+                            {
+                                <div class="detail-row"><dt>Conditions</dt><dd>@report.WeatherNotes</dd></div>
+                            }
+                        }
+                        else
+                        {
+                            <div class="detail-row"><dt>Hazard type</dt><dd>@(report.HazardTypeName ?? "—")</dd></div>
+                            <div class="detail-row"><dt>Risk level</dt><dd>@(report.RiskLevel ?? "—")</dd></div>
+                            <div class="detail-row"><dt>Observed at</dt><dd>@(report.ObservedAt?.ToString("d MMM yyyy, HH:mm") ?? "Not recorded")</dd></div>
+                            <div class="detail-row"><dt>Expected clearance</dt><dd>@(report.ExpectedClearanceAt?.ToString("d MMM yyyy, HH:mm") ?? "Unknown")</dd></div>
+                        }
+                        <div class="detail-row"><dt>Reported by</dt><dd>@report.ReporterName</dd></div>
+                        <div class="detail-row"><dt>Reported at</dt><dd>@report.ReportedAt.ToString("d MMM yyyy, HH:mm")</dd></div>
+                    </dl>
+                </div>
+
+                <div class="panel">
+                    <h2 class="t-h3 card-title">Photos</h2>
+                    @if (report.Images.Count == 0)
+                    {
+                        <p class="t-meta">No supporting images were added to this report.</p>
+                    }
+                    else
+                    {
+                        <div class="gallery">
+                            @foreach (var image in report.Images)
+                            {
+                                var imageUrl = Url.Action("Image", "Reports", new { id = image.ImageId });
+                                <a href="@imageUrl" target="_blank" rel="noopener noreferrer">
+                                    <img src="@imageUrl" alt="@(image.Caption ?? "Photo attached to this report")" loading="lazy" />
+                                </a>
+                            }
+                        </div>
+                    }
+                </div>
+
+                <section class="panel" data-comments-panel data-report-id="@report.ReportId">
+                    <div class="comments-head">
+                        <h2 class="t-h3 card-title">Discussion</h2>
+                        <span class="t-meta" data-comment-count>@Model.Comments.TotalCount</span>
+                    </div>
+
+                    @if (Model.IsSignedIn)
+                    {
+                        <form class="comment-form" data-comment-form>
+                            <label class="sr-only" for="comment-text">Add a comment</label>
+                            <textarea class="input" id="comment-text" rows="3"
+                                      maxlength="1500" data-comment-input
+                                      placeholder="Add useful context about this report."></textarea>
+                            <div class="comment-form-foot">
+                                <span class="t-micro t-muted" data-comment-remaining>1500 characters left</span>
+                                <button class="btn btn-primary btn-sm" type="submit" data-comment-submit>Post comment</button>
+                            </div>
+                        </form>
+                    }
+                    else
+                    {
+                        <p class="t-meta">
+                            <a asp-controller="Account" asp-action="Login" asp-route-returnUrl="@Context.Request.Path">Sign in</a>
+                            to join the discussion.
+                        </p>
+                    }
+
+                    <ul class="comment-list" data-comment-list>
+                        @foreach (var c in Model.Comments.Items)
+                        {
+                            <partial name="_Comment" model="c" />
+                        }
+                    </ul>
+
+                    <p class="t-meta comment-empty" data-comment-empty hidden="@(Model.Comments.TotalCount > 0)">
+                        No community discussion yet. Add useful context about this report.
+                    </p>
+
+                    @if (Model.Comments.HasNext)
+                    {
+                        <button class="btn btn-ghost btn-block btn-sm" type="button" data-comment-more data-next-page="2">
+                            Load more comments
+                        </button>
+                    }
+                </section>
+            </div>
+
+            <aside class="stack-5">
+                @if (Model.Votes is not null)
+                {
+                    var votes = Model.Votes;
+                    <div class="panel trust-panel" data-trust-panel data-report-id="@report.ReportId">
+                        <div class="trust-head">
+                            <h2 class="t-h3 card-title">Community check</h2>
+                            <span class="chip chip--plain chip--muted" data-trust-consensus>@votes.ConsensusLabel</span>
+                        </div>
+
+                        <div class="trust-choices">
+                            <button type="button"
+                                    class="trust-choice trust-choice--confirm @(votes.CurrentUserVote == ReportVoteTypes.Confirm ? "is-active" : null)"
+                                    data-vote="@ReportVoteTypes.Confirm"
+                                    aria-pressed="@(votes.CurrentUserVote == ReportVoteTypes.Confirm ? "true" : "false")"
+                                    @(votes.CanVote ? "" : "disabled")>
+                                <span class="trust-choice-icon" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+                                </span>
+                                <span class="trust-choice-label">Confirm</span>
+                                <span class="trust-choice-count" data-confirm-count>@votes.ConfirmCount</span>
+                            </button>
+
+                            <button type="button"
+                                    class="trust-choice trust-choice--dispute @(votes.CurrentUserVote == ReportVoteTypes.Dispute ? "is-active" : null)"
+                                    data-vote="@ReportVoteTypes.Dispute"
+                                    aria-pressed="@(votes.CurrentUserVote == ReportVoteTypes.Dispute ? "true" : "false")"
+                                    @(votes.CanVote ? "" : "disabled")>
+                                <span class="trust-choice-icon" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8.5v4.5M12 16.5h.01" /><circle cx="12" cy="12" r="9" /></svg>
+                                </span>
+                                <span class="trust-choice-label">Dispute</span>
+                                <span class="trust-choice-count" data-dispute-count>@votes.DisputeCount</span>
+                            </button>
+                        </div>
+
+                        <p class="t-micro t-muted" data-trust-note aria-live="polite">
+                            @if (!string.IsNullOrWhiteSpace(votes.CannotVoteReason))
+                            {
+                                @votes.CannotVoteReason
+                            }
+                            else
+                            {
+                                <text>Community feedback helps moderators prioritise. It does not verify a report.</text>
+                            }
+                        </p>
+                    </div>
+                }
+
+                <div class="panel">
+                    <h2 class="t-h3 card-title">Location</h2>
+                    <div class="detail-map" data-detail-map="@mapConfig" role="img"
+                         aria-label="Map showing where this report was made"></div>
+                    <p class="location-card-coords" style="margin-top: var(--space-3);">
+                        @report.Latitude.ToString("0.#####", CultureInfo.InvariantCulture),
+                        @report.Longitude.ToString("0.#####", CultureInfo.InvariantCulture)
+                    </p>
+                    @if (!string.IsNullOrWhiteSpace(place))
+                    {
+                        <p class="t-meta">@place</p>
+                    }
+                </div>
+
+                <div class="panel">
+                    <div class="trust-head">
+                        <h2 class="t-h3 card-title">Official status</h2>
+                        <span class="t-micro t-muted">SafePath moderation</span>
+                    </div>
+                    <div class="timeline">
+                        <div class="timeline-item">
+                            <span class="timeline-dot" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+                            </span>
+                            <div>
+                                <strong class="t-body">Reported</strong>
+                                <p class="t-meta">@report.ReportedAt.ToString("d MMM yyyy, HH:mm")</p>
+                            </div>
+                        </div>
+
+                        @foreach (var entry in Model.History)
+                        {
+                            <div class="timeline-item">
+                                <span class="timeline-dot" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+                                </span>
+                                <div>
+                                    <strong class="t-body">@entry.StatusName</strong>
+                                    <p class="t-meta">
+                                        @(entry.ReviewerName is null ? "SafePath moderator" : entry.ReviewerName + " · SafePath moderator")
+                                        · @entry.VerifiedAt.ToString("d MMM yyyy, HH:mm")
+                                    </p>
+                                    @if (!string.IsNullOrWhiteSpace(entry.Note))
+                                    {
+                                        <p class="timeline-note" style="white-space: pre-line;">@entry.Note</p>
+                                    }
+                                </div>
+                            </div>
+                        }
+
+                        @if (Model.History.Count == 0)
+                        {
+                            <div class="timeline-item">
+                                <span class="timeline-dot" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4" /></svg>
+                                </span>
+                                <div>
+                                    <strong class="t-body">@report.StatusName</strong>
+                                    <p class="t-meta">
+                                        @(report.StatusDescription ?? "Current status of this report.")
+                                        @if (report.ResolvedAt is not null)
+                                        {
+                                            <text> Closed @report.ResolvedAt.Value.ToString("d MMM yyyy").</text>
+                                        }
+                                    </p>
+                                </div>
+                            </div>
+                        }
+                    </div>
+
+                    @if (Model.History.Count == 0)
+                    {
+                        <p class="t-meta" style="margin-top: var(--space-4);">
+                            A moderator has not reviewed this report yet.
+                        </p>
+                    }
+                </div>
+
+                @if (report.IsOwnedByViewer)
+                {
+                    <a class="btn btn-secondary btn-block" asp-action="My">Back to my reports</a>
+                }
+            </aside>
+        </div>
+    </div>
+</section>
+
+@section Scripts {
+    <script src="~/lib/leaflet/leaflet.js"></script>
+    <script src="~/js/safepath-map.js" asp-append-version="true"></script>
+    <script src="~/js/community.js" asp-append-version="true" defer></script>
+    <script>
+        (function () {
+            var host = document.querySelector("[data-detail-map]");
+            if (!host || typeof L === "undefined") { return; }
+
+            var config = JSON.parse(host.getAttribute("data-detail-map"));
+            var map = window.SafePathMap.createMap(host, { lat: config.lat, lng: config.lng, zoom: 16 });
+
+            map.dragging.disable();
+            map.scrollWheelZoom.disable();
+
+            L.marker([config.lat, config.lng], {
+                icon: window.SafePathMap.reportIcon(config.type, config.accent),
+                keyboard: false
+            }).addTo(map);
+        })();
+    </script>
+}

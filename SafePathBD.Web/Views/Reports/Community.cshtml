@@ -1,1 +1,120 @@
 @model SafePathBD.Web.Models.ViewModels.Reports.CommunityReviewViewModel
+@{
+    ViewData["Title"] = "Community reports";
+
+    var filters = new (string? Type, string Label)[]
+    {
+        (null, "Everything"),
+        (ReportTypes.Accident, "Accidents"),
+        (ReportTypes.Hazard, "Hazards")
+    };
+
+    var statuses = new (string? Code, string Label)[]
+    {
+        (null, "Any stage"),
+        (ReportStatusCodes.Pending, "Pending"),
+        (ReportStatusCodes.UnderReview, "Under review"),
+        (ReportStatusCodes.NeedsInfo, "Needs info")
+    };
+}
+
+@section Head {
+    <link rel="stylesheet" href="~/css/reports.css" asp-append-version="true" />
+}
+
+<partial name="_PageHeader" model="@(new PageHeaderViewModel
+{
+    Eyebrow = "Community",
+    Title = "Help verify reports",
+    Description = "Reports from other travellers that have not been officially verified yet. Your confirmation helps moderators decide what is real.",
+    Chips = new[] { new PageHeaderChip(Model.Reports.TotalCount + " awaiting input", "chip--accent") }
+})" />
+
+<section class="section section--tight">
+    <div class="shell stack-5">
+
+        <div class="notice notice--caution reveal">
+            <span class="notice-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 9v4M12 17h.01" />
+                    <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+                </svg>
+            </span>
+            <div>
+                <strong class="t-body">Unverified community reports</strong>
+                <p class="t-meta">
+                    Nothing on this page has been confirmed by a SafePath moderator. Treat it as a
+                    first-hand account, not as official road safety information.
+                </p>
+            </div>
+        </div>
+
+        <div class="filter-bar" role="group" aria-label="Filter community reports">
+            <div class="filter-line">
+                @foreach (var f in filters)
+                {
+                    <a class="chip chip--filter @(Model.ReportType == f.Type ? "is-active" : null)"
+                       asp-action="Community" asp-route-type="@f.Type" asp-route-status="@Model.StatusCode">@f.Label</a>
+                }
+            </div>
+            <div class="filter-line">
+                @foreach (var s in statuses)
+                {
+                    <a class="chip chip--filter @(Model.StatusCode == s.Code ? "is-active" : null)"
+                       asp-action="Community" asp-route-type="@Model.ReportType" asp-route-status="@s.Code">@s.Label</a>
+                }
+            </div>
+        </div>
+
+        @if (Model.Reports.TotalCount == 0)
+        {
+            <div class="empty-state reveal">
+                <span class="card-icon card-icon--safe" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+                </span>
+                <h3 class="t-h3">
+                    @(Model.HasAnyFilter ? "No reports match these filters." : "Nothing needs community review right now.")
+                </h3>
+                <p class="t-body">
+                    @(Model.HasAnyFilter
+                        ? "Try a different type or stage."
+                        : "Every open report has already had community input. Check back after the next submission.")
+                </p>
+                @if (Model.HasAnyFilter)
+                {
+                    <a class="btn btn-ghost" asp-action="Community">Clear filters</a>
+                }
+            </div>
+        }
+        else
+        {
+            <ul class="community-list">
+                @foreach (var report in Model.Reports.Items)
+                {
+                    <partial name="_CommunityReportCard" model="report" />
+                }
+            </ul>
+
+            @if (Model.Reports.TotalPages > 1)
+            {
+                <nav class="pager" aria-label="Community report pages">
+                    @if (Model.Reports.HasPrevious)
+                    {
+                        <a class="btn btn-ghost btn-sm" asp-action="Community"
+                           asp-route-type="@Model.ReportType" asp-route-status="@Model.StatusCode"
+                           asp-route-page="@(Model.Reports.Page - 1)">Previous</a>
+                    }
+                    <span class="t-meta">Page @Model.Reports.Page of @Model.Reports.TotalPages</span>
+                    @if (Model.Reports.HasNext)
+                    {
+                        <a class="btn btn-ghost btn-sm" asp-action="Community"
+                           asp-route-type="@Model.ReportType" asp-route-status="@Model.StatusCode"
+                           asp-route-page="@(Model.Reports.Page + 1)">Next</a>
+                    }
+                </nav>
+            }
+        }
+    </div>
+</section>
+
+
